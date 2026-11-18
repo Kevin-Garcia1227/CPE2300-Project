@@ -97,18 +97,51 @@ label_loop:
     addi s1, s1, -1
     bnez s1, label_loop
 
-    # Present the completed screen once.
+    # show the initial screen
+    jal ra, present_screen
+
+    # 3 = whether the current R press has been handled.
+
+    li s3, 0
+
+keyboard_loop:
+    li t0, KEY_HELD
+    lw t1, 0(t0)
+
+    # Convert uppercase ASCII to lowercase for comparison.
+    ori t1, t1, 32
+    li t2, 114                 # ASCII 'r'
+    beq t1, t2, r_pressed
+
+    # R is no longer held: allow the next press.
+    li s3, 0
+    j keyboard_loop
+
+r_pressed:
+    # Do not repeatedly draw while R remains held.
+    bnez s3, keyboard_loop
+    li s3, 1
+
+    # Draw the request circle.
+    li a0, 63                  # Center x
+    li a1, 7                   # Center y
+    li a2, 3                   # Radius
+    li a3, 2               # Color
+    jal ra, draw_circle
+
+    jal ra, present_screen
+    j keyboard_loop
+
+# ------------------------------------------------------------
+# present_screen
+# Display the current framebuffer.
+# ------------------------------------------------------------
+present_screen:
     li t0, PRESENT
     li t1, 1
     sw t1, 0(t0)
+    ret
 
-    li a7, 10
-    ecall
-
-# ------------------------------------------------------------
-# draw_rectangle
-# a0 = x, a1 = y, a2 = width, a3 = height, a4 = color
-# ------------------------------------------------------------
 draw_rectangle:
     li t0, WIDTH
     mul t1, a1, t0
@@ -136,10 +169,49 @@ rectangle_pixel:
 
 
 
-# ------------------------------------------------------------
-# draw_label
-# a0 = x, a1 = y, a2 = address of eight glyph indices
-# ------------------------------------------------------------
+draw_circle:
+    bltz a2, circle_done
+
+    mul t6, a2, a2         # radius squared
+    neg t0, a2             # dy = -radius
+
+circle_row:
+    neg t1, a2             # dx = -radius
+
+circle_pixel:
+    mul t2, t0, t0
+    mul t3, t1, t1
+    add t2, t2, t3
+    bgt t2, t6, circle_next
+
+    # Check y coordinate.
+    add t2, a1, t0
+    li t4, HEIGHT
+    bgeu t2, t4, circle_next
+
+    # Check x coordinate.
+    add t3, a0, t1
+    li t4, WIDTH
+    bgeu t3, t4, circle_next
+
+    # Address = FB + y * WIDTH + x.
+    mul t2, t2, t4
+    add t2, t2, t3
+    li t4, FB
+    add t2, t2, t4
+
+    sb a3, 0(t2)
+
+circle_next:
+    addi t1, t1, 1
+    ble t1, a2, circle_pixel
+
+    addi t0, t0, 1
+    ble t0, a2, circle_row
+
+circle_done:
+    ret
+
 draw_label:
     li a3, 8
 
